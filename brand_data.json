@@ -1,0 +1,99 @@
+{
+  "brand": {
+    "name": "LCB - Navyakosh Organic Fertilizer",
+    "tagline": "Smart Organic Solution for Sustainable Farming",
+    "description": "Navyakosh is an advanced organic fertilizer made from cow dung, crop residues, and other natural ingredients. It enriches soil health, improves fertility, enhances water retention, and is completely safe for crops, farmers, and the environment.",
+    "benefits": [
+      "Improves soil fertility and water-holding capacity",
+      "Contains 60+ beneficial microorganisms",
+      "Reduces dependence on chemical fertilizers",
+      "Eco-friendly and safe for long-term use",
+      "Boosts crop yield and quality"
+    ],
+    "purchase_links": [
+      "https://amzn.in/d/hBRlaGo"
+    ]
+  },
+  "products": [
+    {
+      "crop": "Wheat",
+      "applications": [
+        "4-5 bags (50kg each) per acre during land preparation before sowing",
+        "2-3 bags (50kg each) 45–60 days after sowing, post weeding (irrigated crops)"
+      ],
+      "mechanism": "Azospirillum, Azotobacter, PSB, and SSB release and fix nutrients for wheat."
+    },
+    {
+      "crop": "Maize",
+      "applications": [
+        "4-5 bags per acre before sowing",
+        "2-3 bags 45–60 days after sowing"
+      ],
+      "mechanism": "Azospirillum, PSB, and VAM microbes enhance nutrient absorption."
+    },
+    {
+      "crop": "Banana",
+      "applications": [
+        "500g per plant at transplantation",
+        "1 kg per plant after 6 months"
+      ],
+      "mechanism": "VAM, PSB, Azospirillum, KMB microbes improve nutrient absorption."
+    },
+    {
+      "crop": "Sugarcane",
+      "applications": [
+        "5-6 bags (50kg each) per acre during planting",
+        "Additional 2-3 bags per acre at tillering stage"
+      ],
+      "mechanism": "Microbes improve cane tillering and sucrose accumulation."
+    },
+    {
+      "crop": "Paddy",
+      "applications": [
+        "4-5 bags per acre at field preparation",
+        "2-3 bags at mid-tillering stage"
+      ],
+      "mechanism": "PSB and Azospirillum increase nitrogen uptake."
+    },
+    {
+      "crop": "Vegetables & Fruits",
+      "applications": [
+        "Apply 2-3 bags per acre at land preparation",
+        "Repeat every 45-60 days as top dressing"
+      ],
+      "mechanism": "Microbes improve flowering, fruit setting, and soil fertility."
+    }
+  ],
+  "mechanism": {
+    "microbes": [
+      "Azospirillum - Nitrogen fixation",
+      "Azotobacter - Nitrogen enrichment",
+      "PSB (Phosphate Solubilizing Bacteria) - Unlocks phosphorus",
+      "SSB (Sulphur Solubilizing Bacteria) - Makes sulphur available",
+      "VAM (Vesicular Arbuscular Mycorrhiza) - Enhances root absorption",
+      "KMB (Potassium Mobilizing Bacteria) - Makes potassium available"
+    ]
+  },
+  "faqs": [
+    {
+      "q": "What is Navyakosh Organic Fertilizer?",
+      "a": "It is a natural, organic fertilizer made from cow dung, crop waste, and enriched with beneficial microorganisms."
+    },
+    {
+      "q": "Is it safe for long-term soil health?",
+      "a": "Yes, it restores natural microbial balance, improves fertility, and enhances soil structure over time."
+    },
+    {
+      "q": "Can it replace chemical fertilizers?",
+      "a": "It reduces dependency on chemical fertilizers while maintaining or improving yields sustainably."
+    },
+    {
+      "q": "How does it improve crop yield?",
+      "a": "Through 60+ beneficial microbes that release nutrients, enhance root growth, and improve nutrient uptake."
+    },
+    {
+      "q": "Where can I buy Navyakosh?",
+      "a": "From authorized dealers, agricultural stores, or online at Amazon: https://amzn.in/d/hBRlaGo"
+    }
+  ]
+}
