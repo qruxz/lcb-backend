@@ -1,15 +1,13 @@
-flask==2.3.3
-flask-cors==4.0.0
-python-dotenv==1.0.0
-gunicorn==21.2.0
+fastapi==0.111.0
+uvicorn==0.29.0
 
-# Vector DB + RAG
-chromadb==0.4.22
+google-generativeai==0.3.2
+
 langchain==0.1.0
+langchain-google-genai==0.0.5
 langchain-community==0.0.10
 
-# Gemini integration
-langchain-google-genai==0.0.6
-
-# For embeddings / text models
 sentence-transformers==2.2.2
+chromadb==0.4.22
+
+python-dotenv==1.0.0
