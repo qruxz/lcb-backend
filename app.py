@@ -1,5 +1,5 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from fastapi import FastAPI, Request, Body, Header
+from fastapi.middleware.cors import CORSMiddleware
 import google.generativeai as genai
 import os
 import json
@@ -9,12 +9,21 @@ from rag_system import RAGSystem
 import logging
 from datetime import datetime
 import uuid
+import uvicorn
 
 # Load environment variables
 load_dotenv()
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for cross-origin requests
+app = FastAPI(title="AI Assistant Backend with RAG (Gemini)")
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Setup logging
 logging.basicConfig(
@@ -30,7 +39,7 @@ logging.basicConfig(
 logs_dir = Path('logs')
 logs_dir.mkdir(exist_ok=True)
 
-def log_message(user_id, message, is_user=True, response=None, error=None):
+def log_message(user_id, message, request: Request, is_user=True, response=None, error=None):
     timestamp = datetime.now().isoformat()
     log_entry = {
         'timestamp': timestamp,
@@ -39,8 +48,8 @@ def log_message(user_id, message, is_user=True, response=None, error=None):
         'message': message,
         'response': response,
         'error': error,
-        'ip_address': request.remote_addr,
-        'user_agent': request.headers.get('User-Agent', 'Unknown')
+        'ip_address': request.client.host if request.client else "Unknown",
+        'user_agent': request.headers.get('user-agent', 'Unknown')
     }
     log_file = logs_dir / f'chat_logs_{datetime.now().strftime("%Y-%m-%d")}.json'
     try:
@@ -56,12 +65,11 @@ def log_message(user_id, message, is_user=True, response=None, error=None):
         logging.error(f"Failed to write to log file: {e}")
 
     if is_user:
-        logging.info(f"User {user_id} ({request.remote_addr}): {message}")
+        logging.info(f"User {user_id} ({log_entry['ip_address']}): {message}")
     else:
         logging.info(f"AI Response to {user_id}: {response[:100]}...")
 
-def get_user_id():
-    session_id = request.headers.get('X-Session-ID')
+def get_user_id(session_id: str = None):
     if not session_id:
         session_id = str(uuid.uuid4())
     return session_id
@@ -81,27 +89,27 @@ print("🔍 Environment check:")
 print(f"   GEMINI_API_KEY from env: {'✅ Found' if api_key else '❌ Not found'}")
 print()
 
-@app.route('/api/chat', methods=['POST'])
-def chat():
+@app.post("/api/chat")
+async def chat(request: Request, session_id: str = Header(default=None)):
     try:
-        data = request.get_json()
-        message = data.get('message', '')
+        data = await request.json()
+        message = data.get("message", "")
 
         if not message:
-            return jsonify({'error': 'Message is required'}), 400
+            return {"error": "Message is required", "success": False}
 
-        user_id = get_user_id()
-        log_message(user_id, message, is_user=True)
+        user_id = get_user_id(session_id)
+        log_message(user_id, message, request, is_user=True)
 
         if not api_key:
-            error_msg = 'Gemini API key not configured.'
-            log_message(user_id, message, is_user=False, error=error_msg)
-            return jsonify({'error': error_msg, 'success': False}), 500
+            error_msg = "Gemini API key not configured."
+            log_message(user_id, message, request, is_user=False, error=error_msg)
+            return {"error": error_msg, "success": False}
 
         if not rag_system:
-            error_msg = 'RAG system not initialized'
-            log_message(user_id, message, is_user=False, error=error_msg)
-            return jsonify({'error': error_msg, 'success': False}), 500
+            error_msg = "RAG system not initialized"
+            log_message(user_id, message, request, is_user=False, error=error_msg)
+            return {"error": error_msg, "success": False}
 
         personal_info = rag_system.get_personal_info()
         profile_summary = rag_system.get_summary_document()
@@ -130,7 +138,7 @@ Refined Search Query:
             print(f"⚠️ RAG search failed: {e}")
             relevant_context = "Unable to retrieve relevant information."
 
-        # Final Answer (short + direct)
+        # Final Answer
         final_answer_prompt = f"""
 You are a precise FAQ assistant for the brand {personal_info['name']}.
 
@@ -153,48 +161,44 @@ INSTRUCTIONS:
         final_response = final_model.generate_content(final_answer_prompt)
         ai_response = final_response.text.strip()
 
-        log_message(user_id, message, is_user=False, response=ai_response)
+        log_message(user_id, message, request, is_user=False, response=ai_response)
 
-        return jsonify({
-            'response': ai_response,
-            'success': True,
-            'refined_query': refined_query,
-            'session_id': user_id
-        })
+        return {
+            "response": ai_response,
+            "success": True,
+            "refined_query": refined_query,
+            "session_id": user_id
+        }
 
     except Exception as e:
-        error_msg = f'Failed to get AI response: {str(e)}'
-        user_id = get_user_id()
-        log_message(user_id, message if 'message' in locals() else 'Unknown', is_user=False, error=error_msg)
+        error_msg = f"Failed to get AI response: {str(e)}"
+        user_id = get_user_id(session_id)
+        log_message(user_id, message if "message" in locals() else "Unknown", request, is_user=False, error=error_msg)
         print(f"Error: {str(e)}")
-        return jsonify({'error': 'Failed to get AI response', 'success': False}), 500
+        return {"error": "Failed to get AI response", "success": False}
 
-# Health check
-@app.route('/api/health', methods=['GET'])
-def health_check():
+@app.get("/api/health")
+async def health_check():
     api_key_status = "configured" if api_key else "not configured"
     rag_status = "initialized" if rag_system else "not initialized"
-    return jsonify({'status': 'healthy','api_key': api_key_status,'rag_system': rag_status})
+    return {"status": "healthy", "api_key": api_key_status, "rag_system": rag_status}
 
-# Rebuild vectorstore
-@app.route('/api/rebuild-vectorstore', methods=['POST'])
-def rebuild_vectorstore():
+@app.post("/api/rebuild-vectorstore")
+async def rebuild_vectorstore():
     try:
         if not api_key:
-            return jsonify({'error': 'Gemini API key not configured','success': False}), 500
+            return {"error": "Gemini API key not configured", "success": False}
         global rag_system
         rag_system = RAGSystem(api_key)
         rag_system.build_vectorstore()
-        return jsonify({'message': 'Vector database rebuilt','success': True})
+        return {"message": "Vector database rebuilt", "success": True}
     except Exception as e:
         print(f"Error rebuilding vectorstore: {str(e)}")
-        return jsonify({'error': 'Failed to rebuild vector database','success': False}), 500
+        return {"error": "Failed to rebuild vector database", "success": False}
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("🚀 Starting AI Assistant Backend with RAG (Gemini)...")
     print(f"📡 API Key Status: {'✅ Configured' if api_key else '❌ Not configured'}")
     print(f"🧠 RAG System: {'✅ Ready' if rag_system else '❌ Not ready'}")
-
-    port = int(os.environ.get("PORT", 5000))  # Render sets $PORT
-    print(f"🌐 Server running at: http://0.0.0.0:{port}")
-    app.run(debug=False, host='0.0.0.0', port=port)
+    print("🌐 Server running at: http://localhost:5001")
+    uvicorn.run("app:app", host="0.0.0.0", port=5001, reload=True)
