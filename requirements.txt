@@ -11,3 +11,7 @@ sentence-transformers==2.2.2
 chromadb==0.4.22
 
 python-dotenv==1.0.0
+
+requests
+beautifulsoup4
+
