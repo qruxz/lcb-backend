@@ -1,4 +1,6 @@
-from fastapi import FastAPI, Request, Body, Header
+# app.py (text-only RAG with scraped_data + brand_data.json)
+
+from fastapi import FastAPI, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 import google.generativeai as genai
 import os
@@ -25,41 +27,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Setup logging
+# Logging setup
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('chat_logs.log'),
-        logging.StreamHandler()
-    ]
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("chat_logs.log"), logging.StreamHandler()],
 )
-
-# Logs directory
-logs_dir = Path('logs')
+logs_dir = Path("logs")
 logs_dir.mkdir(exist_ok=True)
 
+
 def log_message(user_id, message, request: Request, is_user=True, response=None, error=None):
+    """Save chat logs"""
     timestamp = datetime.now().isoformat()
     log_entry = {
-        'timestamp': timestamp,
-        'user_id': user_id,
-        'message_type': 'user' if is_user else 'ai',
-        'message': message,
-        'response': response,
-        'error': error,
-        'ip_address': request.client.host if request.client else "Unknown",
-        'user_agent': request.headers.get('user-agent', 'Unknown')
+        "timestamp": timestamp,
+        "user_id": user_id,
+        "message_type": "user" if is_user else "ai",
+        "message": message,
+        "response": response,
+        "error": error,
+        "ip_address": request.client.host if request.client else "Unknown",
+        "user_agent": request.headers.get("user-agent", "Unknown"),
     }
-    log_file = logs_dir / f'chat_logs_{datetime.now().strftime("%Y-%m-%d")}.json'
+    log_file = logs_dir / f"chat_logs_{datetime.now().strftime('%Y-%m-%d')}.json"
     try:
         if log_file.exists():
-            with open(log_file, 'r', encoding='utf-8') as f:
+            with open(log_file, "r", encoding="utf-8") as f:
                 logs = json.load(f)
         else:
             logs = []
         logs.append(log_entry)
-        with open(log_file, 'w', encoding='utf-8') as f:
+        with open(log_file, "w", encoding="utf-8") as f:
             json.dump(logs, f, indent=2, ensure_ascii=False)
     except Exception as e:
         logging.error(f"Failed to write to log file: {e}")
@@ -69,28 +68,30 @@ def log_message(user_id, message, request: Request, is_user=True, response=None,
     else:
         logging.info(f"AI Response to {user_id}: {response[:100]}...")
 
+
 def get_user_id(session_id: str = None):
     if not session_id:
         session_id = str(uuid.uuid4())
     return session_id
 
+
 # Configure Gemini
-api_key = os.getenv('GEMINI_API_KEY')
+api_key = os.getenv("GEMINI_API_KEY")
 if api_key:
     genai.configure(api_key=api_key)
 
-# Initialize RAG
+# ------------------ Init RAG ------------------
 rag_system = None
 if api_key:
     rag_system = RAGSystem(api_key)
-    rag_system.build_vectorstore()
+    print("📑 Building vectorstore (brand_data.json + scraped_data/*.txt if available)...")
+    rag_system.build_vectorstore(use_scraped=True)
 
-print("🔍 Environment check:")
-print(f"   GEMINI_API_KEY from env: {'✅ Found' if api_key else '❌ Not found'}")
-print()
+# ----------------------------------------------------------------------
 
 @app.post("/api/chat")
 async def chat(request: Request, session_id: str = Header(default=None)):
+    """Main chat endpoint"""
     try:
         data = await request.json()
         message = data.get("message", "")
@@ -116,7 +117,7 @@ async def chat(request: Request, session_id: str = Header(default=None)):
 
         # Refine Query
         query_refiner_prompt = f"""
-You are a research assistant. Refine the user question into a precise search query for the brand knowledge base.
+Refine the user question into a precise search query.
 
 User's Original Question: "{message}"
 Refined Search Query:
@@ -133,7 +134,7 @@ Refined Search Query:
         # Search RAG
         try:
             relevant_context = rag_system.search_relevant_context(refined_query, k=4)
-            print("Retrieved relevant context: ", relevant_context)
+            print("Retrieved relevant context.")
         except Exception as e:
             print(f"⚠️ RAG search failed: {e}")
             relevant_context = "Unable to retrieve relevant information."
@@ -152,11 +153,9 @@ You are a precise FAQ assistant for the brand {personal_info['name']}.
 
 INSTRUCTIONS:
 - Answer in **2–5 sentences maximum**.
-- If the context has a clearly written "Ans.", return it verbatim.
-- Do NOT add much extra explanations.
+- If the context has a clearly written answer, return it verbatim.
 - If no relevant answer exists, say: "Sorry, I don’t have that information right now."
 """
-
         final_model = genai.GenerativeModel("gemini-1.5-flash")
         final_response = final_model.generate_content(final_answer_prompt)
         ai_response = final_response.text.strip()
@@ -167,7 +166,7 @@ INSTRUCTIONS:
             "response": ai_response,
             "success": True,
             "refined_query": refined_query,
-            "session_id": user_id
+            "session_id": user_id,
         }
 
     except Exception as e:
@@ -175,7 +174,8 @@ INSTRUCTIONS:
         user_id = get_user_id(session_id)
         log_message(user_id, message if "message" in locals() else "Unknown", request, is_user=False, error=error_msg)
         print(f"Error: {str(e)}")
-        return {"error": "Failed to get AI response", "success": False}
+        return {"error": error_msg, "success": False}
+
 
 @app.get("/api/health")
 async def health_check():
@@ -183,18 +183,21 @@ async def health_check():
     rag_status = "initialized" if rag_system else "not initialized"
     return {"status": "healthy", "api_key": api_key_status, "rag_system": rag_status}
 
+
 @app.post("/api/rebuild-vectorstore")
 async def rebuild_vectorstore():
+    """Manually rebuild vector database from brand_data.json + scraped_data/*.txt"""
     try:
         if not api_key:
             return {"error": "Gemini API key not configured", "success": False}
         global rag_system
         rag_system = RAGSystem(api_key)
-        rag_system.build_vectorstore()
+        rag_system.build_vectorstore(use_scraped=True)
         return {"message": "Vector database rebuilt", "success": True}
     except Exception as e:
         print(f"Error rebuilding vectorstore: {str(e)}")
         return {"error": "Failed to rebuild vector database", "success": False}
+
 
 if __name__ == "__main__":
     print("🚀 Starting AI Assistant Backend with RAG (Gemini)...")
