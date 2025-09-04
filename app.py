@@ -152,9 +152,11 @@ You are a precise FAQ assistant for the brand {personal_info['name']}.
 </DETAILED_CONTEXT>
 
 INSTRUCTIONS:
-- Answer in **2–5 sentences maximum in clear way in bullet points with symbol and emoji**.
-- If the context has a clearly written answer, return it verbatim in bullet points.
-- If no relevant answer exists, say: "Sorry, I don’t have that information right now."
+- Always answer respectfully, like a helpful assistant.
+- Keep responses short (2–5 sentences).
+- Format the answer using bullet points with relevant emojis for clarity.
+- If the context has a clearly written answer, return it verbatim in this style.
+- If no relevant answer exists, say politely: "Sorry, I don’t have that information right now."
 """
         final_model = genai.GenerativeModel("gemini-1.5-flash")
         final_response = final_model.generate_content(final_answer_prompt)
