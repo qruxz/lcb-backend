@@ -1,4 +1,4 @@
-# app.py (text-only RAG with scraped_data + brand_data.json)
+# app.py (text-only RAG with scraped_data + brand_data.json + Hindi/English toggle)
 
 from fastapi import FastAPI, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,8 +37,8 @@ logs_dir = Path("logs")
 logs_dir.mkdir(exist_ok=True)
 
 
-def log_message(user_id, message, request: Request, is_user=True, response=None, error=None):
-    """Save chat logs"""
+def log_message(user_id, message, request: Request, is_user=True, response=None, error=None, language="en"):
+    """Save chat logs with language"""
     timestamp = datetime.now().isoformat()
     log_entry = {
         "timestamp": timestamp,
@@ -47,6 +47,7 @@ def log_message(user_id, message, request: Request, is_user=True, response=None,
         "message": message,
         "response": response,
         "error": error,
+        "language": language,
         "ip_address": request.client.host if request.client else "Unknown",
         "user_agent": request.headers.get("user-agent", "Unknown"),
     }
@@ -64,9 +65,9 @@ def log_message(user_id, message, request: Request, is_user=True, response=None,
         logging.error(f"Failed to write to log file: {e}")
 
     if is_user:
-        logging.info(f"User {user_id} ({log_entry['ip_address']}): {message}")
+        logging.info(f"[{language.upper()}] User {user_id} ({log_entry['ip_address']}): {message}")
     else:
-        logging.info(f"AI Response to {user_id}: {response[:100]}...")
+        logging.info(f"[{language.upper()}] AI Response to {user_id}: {response[:100]}...")
 
 
 def get_user_id(session_id: str = None):
@@ -87,10 +88,15 @@ if api_key:
     print("📑 Building vectorstore (brand_data.json + scraped_data/*.txt if available)...")
     rag_system.build_vectorstore(use_scraped=True)
 
+
 # ----------------------------------------------------------------------
 
 @app.post("/api/chat")
-async def chat(request: Request, session_id: str = Header(default=None)):
+async def chat(
+    request: Request,
+    session_id: str = Header(default=None),
+    x_language: str = Header(default="en"),   # 👈 NEW
+):
     """Main chat endpoint"""
     try:
         data = await request.json()
@@ -100,22 +106,22 @@ async def chat(request: Request, session_id: str = Header(default=None)):
             return {"error": "Message is required", "success": False}
 
         user_id = get_user_id(session_id)
-        log_message(user_id, message, request, is_user=True)
+        log_message(user_id, message, request, is_user=True, language=x_language)
 
         if not api_key:
             error_msg = "Gemini API key not configured."
-            log_message(user_id, message, request, is_user=False, error=error_msg)
+            log_message(user_id, message, request, is_user=False, error=error_msg, language=x_language)
             return {"error": error_msg, "success": False}
 
         if not rag_system:
             error_msg = "RAG system not initialized"
-            log_message(user_id, message, request, is_user=False, error=error_msg)
+            log_message(user_id, message, request, is_user=False, error=error_msg, language=x_language)
             return {"error": error_msg, "success": False}
 
         personal_info = rag_system.get_personal_info()
         profile_summary = rag_system.get_summary_document()
 
-        # Refine Query
+        # ---------------- Query Refinement ----------------
         query_refiner_prompt = f"""
 Refine the user question into a precise search query.
 
@@ -131,7 +137,7 @@ Refined Search Query:
             print(f"⚠️ Query refinement failed: {e}")
             refined_query = message
 
-        # Search RAG
+        # ---------------- Retrieve Context ----------------
         try:
             relevant_context = rag_system.search_relevant_context(refined_query, k=4)
             print("Retrieved relevant context.")
@@ -139,7 +145,20 @@ Refined Search Query:
             print(f"⚠️ RAG search failed: {e}")
             relevant_context = "Unable to retrieve relevant information."
 
-        # Final Answer
+        # ---------------- Final Answer ----------------
+        if x_language.lower() == "hi":
+            lang_instruction = (
+                "\n- Answer **in Hindi language only**.\n"
+                "- Keep respectful tone, short 2–5 sentences.\n"
+                "- Use bullet points with suitable emojis.\n"
+            )
+        else:
+            lang_instruction = (
+                "\n- Answer in English.\n"
+                "- Respectful tone, short 2–5 sentences.\n"
+                "- Use bullet points with emojis.\n"
+            )
+
         final_answer_prompt = f"""
 You are a precise FAQ assistant for the brand {personal_info['name']}.
 
@@ -152,29 +171,36 @@ You are a precise FAQ assistant for the brand {personal_info['name']}.
 </DETAILED_CONTEXT>
 
 INSTRUCTIONS:
-- Always answer respectfully, like a helpful assistant.
-- Keep responses short (2–5 sentences).
-- Format the answer using bullet points with relevant emojis for clarity.
-- If the context has a clearly written answer, return it verbatim in this style.
-- If no relevant answer exists, say politely: "Sorry, I don’t have that information right now."
+{lang_instruction}
+- If the context has a clearly written answer, return it verbatim (but formatted and pointwise when required).
+- If no relevant answer exists, say politely: "🙏 Sorry, I don’t have that information right now."
 """
+
         final_model = genai.GenerativeModel("gemini-1.5-flash")
         final_response = final_model.generate_content(final_answer_prompt)
         ai_response = final_response.text.strip()
 
-        log_message(user_id, message, request, is_user=False, response=ai_response)
+        log_message(user_id, message, request, is_user=False, response=ai_response, language=x_language)
 
         return {
             "response": ai_response,
             "success": True,
             "refined_query": refined_query,
             "session_id": user_id,
+            "language": x_language,   # 👈 echo back
         }
 
     except Exception as e:
         error_msg = f"Failed to get AI response: {str(e)}"
         user_id = get_user_id(session_id)
-        log_message(user_id, message if "message" in locals() else "Unknown", request, is_user=False, error=error_msg)
+        log_message(
+            user_id,
+            message if "message" in locals() else "Unknown",
+            request,
+            is_user=False,
+            error=error_msg,
+            language=x_language,
+        )
         print(f"Error: {str(e)}")
         return {"error": error_msg, "success": False}
 
