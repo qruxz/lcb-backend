@@ -10,13 +10,14 @@ from chromadb.config import Settings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
 from langchain_community.vectorstores import Chroma
-from langchain_community.document_loaders import DirectoryLoader, TextLoader
+from langchain_community.document_loaders import DirectoryLoader, TextLoader, PyPDFLoader
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from dotenv import load_dotenv
 
 # ------------------ CONFIG ------------------
 BASE_DIR = Path(__file__).resolve().parent.parent   # backend/ root
 DATA_DIR = BASE_DIR / "scraped_data"
+PDF_DIR = BASE_DIR / "pdfs"
 BRAND_JSON = BASE_DIR / "brand_data.json"
 CHROMA_DIR = BASE_DIR / "chroma_db"
 
@@ -89,6 +90,26 @@ def load_scraped_texts() -> list[Document]:
     print(f"📄 Loaded and split into {len(split_docs)} chunks from scraped_data/")
     return split_docs
 
+def load_pdfs() -> list[Document]:
+    """Load pdfs/*.pdf files into documents."""
+    if not PDF_DIR.exists():
+        print("⚠️ pdfs/ folder not found, skipping...")
+        return []
+
+    loader = DirectoryLoader(
+        str(PDF_DIR),
+        glob="*.pdf",
+        loader_cls=PyPDFLoader
+    )
+    docs = loader.load()
+    if not docs:
+        print("⚠️ No PDFs found in pdfs/")
+        return []
+
+    split_docs = splitter.split_documents(docs)
+    print(f"📚 Loaded and split into {len(split_docs)} chunks from PDFs/")
+    return split_docs
+
 def deduplicate(docs: list[Document]) -> list[Document]:
     """Remove duplicate chunks by content hash."""
     seen = set()
@@ -108,6 +129,7 @@ def main():
     docs = []
     docs.extend(load_brand_data())
     docs.extend(load_scraped_texts())
+    docs.extend(load_pdfs())  # NEW
 
     docs = deduplicate(docs)
 
@@ -115,7 +137,7 @@ def main():
         print("❌ No documents to index. Exiting.")
         return
 
-    vectorstore = Chroma.from_documents(
+    Chroma.from_documents(
         documents=docs,
         embedding=embeddings,
         collection_name="brand_kb",
